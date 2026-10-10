@@ -53,7 +53,7 @@ an independent judge.
 ## Install
 Clone, then load the repo as a plugin (needed for the ambition hook and the polish agent):
 ```bash
-git clone https://github.com/zog-r/wildling-design && cd wildling-design
+git clone https://github.com/zog-r/wildling-design-loop && cd wildling-design-loop
 claude --plugin-dir "$PWD"
 ```
 Skill only (no hook, no agent):
