@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  leak-gate:
+    name: leak + secret gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      # Self-contained scan — needs no files from the agnostic tool, so it
+      # works in any repo this was scaffolded into.
+      - name: Leak + secret scan
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          HOME = re.compile(r"/(?:Users|home)/(?!USER\b|user\b|runner\b)[A-Za-z0-9._-]+/")
+          EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+          EMAIL_OK = re.compile(r"example\.(com|org|net)|noreply|users\.noreply\.github\.com", re.I)
+          SECRETS = [r"sk_live_[A-Za-z0-9]{20,}", r"sk_test_[A-Za-z0-9]{20,}",
+                     r"AKIA[0-9A-Z]{16}", r"ghp_[A-Za-z0-9]{36}", r"gho_[A-Za-z0-9]{36}",
+                     r"AIzaSy[A-Za-z0-9_-]{33}",
+                     r"-----BEGIN (RSA |EC |DSA )?PRIVATE KEY-----"]
+          SKIP = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"}
+          bad = []
+          for dp, dn, fn in os.walk("."):
+              dn[:] = [d for d in dn if d not in SKIP]
+              for f in fn:
+                  p = os.path.join(dp, f)
+                  rel = os.path.relpath(p, ".")
+                  # skip this workflow file — it contains the patterns above
+                  if rel.startswith(os.path.join(".github", "workflows") + os.sep):
+                      continue
+                  try:
+                      t = open(p, encoding="utf-8").read()
+                  except Exception:
+                      continue
+                  for m in HOME.finditer(t):
+                      bad.append(f"{rel}: home path {m.group(0)}")
+                  for m in EMAIL.finditer(t):
+                      if not EMAIL_OK.search(m.group(0)):
+                          bad.append(f"{rel}: email {m.group(0)}")
+                  for s in SECRETS:
+                      if re.search(s, t):
+                          bad.append(f"{rel}: secret-like token")
+          if bad:
+              for b in bad[:50]:
+                  print(f"::error::{b}")
+              sys.exit(1)
+          print("leak scan: clean")
+          PY
+      # Richer check when the agnostic tool itself is in the repo (dogfooding).
+      - name: agnostic --verify (if present)
+        run: |
+          if [ -f agnostic.py ]; then python3 agnostic.py --verify .; fi

@@ -1,0 +1,1 @@
+{"commands": ["python3 skills/design-loop/scripts/loop.py selftest", "python3 hooks/ambition_gate.py selftest", "python3 skills/design-loop/scripts/media.py selftest"]}
