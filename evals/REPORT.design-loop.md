@@ -111,4 +111,4 @@ Cost includes subprocess spend the tool logs (`cost_logs` in the config).
 | vanilla | 5 | 328s | $1.30 | $6.51 | 0 |
 | wildling | 5 | 2133s | $16.25 | $81.23 | 0 |
 
-_Generated 2026-10-12T05:19:58+00:00 by arena. Prompts frozen in `evals/prompts/design-loop/`; re-run with `arena.py run --repo . --suite design-loop`._
+_Generated 2026-10-12T05:50:05+00:00 by arena. Prompts frozen in `evals/prompts/design-loop/`; re-run with `arena.py run --repo . --suite design-loop`._
