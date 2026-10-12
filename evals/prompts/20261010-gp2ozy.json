@@ -1,0 +1,12 @@
+{
+  "id": "20261010-gp2ozy",
+  "seed": "gp2ozyjhxbebzxtu6t3uxbka0ez8wzejy4aeifcevwz5jio0vc80nboz0l1c25h6",
+  "axes": {
+    "archetype": "SaaS pricing page",
+    "domain": "tax accounting",
+    "twist": "it needs a strong single call to action",
+    "audience": "enterprise buyers"
+  },
+  "prompt": "Build me a pricing page for our tax accounting platform, Ledgerline, and save it as index.html in this folder with all CSS and JS inline, no build step and no external images (use CSS or inline SVG for any visuals). The audience is enterprise finance leaders, meaning CFOs, tax directors and controllers at companies with multi-entity, multi-state filing needs. They care about audit trails, SOC 2, ERP integrations and predictable annual contracts, not cute startup copy. Show three tiers (Professional, Enterprise, Global) with an annual/monthly toggle, a feature comparison table covering things like entity limits, nexus tracking, e-filing jurisdictions, SSO and dedicated CPA support, plus a short FAQ about implementation timelines and data migration. The whole page should drive toward one action, \"Book a demo with our tax team.\" Don't scatter competing buttons like \"Start free trial,\" \"Contact sales\" and \"Learn more.\" Every tier and section should funnel into that single CTA, and it should stay visually dominant, including a sticky version once the user scrolls past the hero.",
+  "created": "2026-10-11T03:55:24+00:00"
+}

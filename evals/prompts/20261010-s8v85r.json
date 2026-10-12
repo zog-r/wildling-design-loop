@@ -1,0 +1,12 @@
+{
+  "id": "20261010-s8v85r",
+  "seed": "s8v85rgb85i85r1nssfug5y0x0kmfxn5liz7ljuimiv3eeyvffdgegsy0uzutzm5",
+  "axes": {
+    "archetype": "event microsite",
+    "domain": "modular synths",
+    "twist": "it has to look premium on a tiny budget",
+    "audience": "existing loyal customers"
+  },
+  "prompt": "Can you build me a single-page site as index.html in this folder (all CSS and JS inline, no build step, no external images) for our annual customer meetup, \"Patch Night 2026,\" which we're hosting for people who already own our Eurorack modules \u2014 it's Saturday, November 14 at a small warehouse space in Portland, doors at 6pm, with an open patching jam, a short talk from our lead designer about the new filter module, and a firmware Q&A. The audience is our regulars, so skip the \"what is modular\" explainer and speak to them like insiders: include a schedule, a \"bring your case\" note with power/space limits (we'll have 10 shared power points), an RSVP section that's just a mailto link since we don't have a form backend, and a short FAQ. We have basically no budget and no photos, so I need it to feel premium purely through typography, spacing, and maybe some subtle CSS-drawn patch-cable or panel-graphic details \u2014 think boutique hardware brand, dark and restrained, not a cheesy rave flyer.",
+  "created": "2026-10-11T03:55:31+00:00"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "20261011-1dsqg0",
+  "seed": "1dsqg0vimp4gwvtcmg9aq7p5i34a0ql8793s4va2ftifskl7w43ij0a6bvq43l3m",
+  "axes": {
+    "archetype": "online course sales page",
+    "domain": "indie game studio",
+    "twist": "it should feel calm and trustworthy",
+    "audience": "existing loyal customers"
+  },
+  "prompt": "We're a small indie game studio and we're launching an online course on how we build our games, from pixel art pipelines to shipping on Steam. Build a sales page for it in index.html, aimed at people who already own our games and follow our devlogs, so it should feel like a thank-you to them, not a hard sell. Keep the vibe calm and trustworthy: clear pricing, what's in each module, a refund promise, no countdown timers or pushy stuff. Make it look world-class: run the design loop, and don't stop to ask me questions, pick sensible defaults.",
+  "created": "2026-10-11T18:47:24+00:00"
+}

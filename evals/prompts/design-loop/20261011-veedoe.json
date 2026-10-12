@@ -1,0 +1,12 @@
+{
+  "id": "20261011-veedoe",
+  "seed": "veedoe2i267er86nnxgpg168qcqz8tuaaisopx638ah3po33c4eclqcky7qi2vfm",
+  "axes": {
+    "archetype": "personal blog home",
+    "domain": "climbing gym",
+    "twist": "it should feel playful without being childish",
+    "audience": "local neighbors"
+  },
+  "prompt": "I run a small bouldering gym in our neighborhood and I want a blog-style homepage where I post route-setting updates, member stories, and the occasional \"hey, we're open late Thursday\" note. It's mostly for people who live nearby, some climb and some just walk past our window and wonder what's going on inside. It should feel fun and a little playful, like chalky hands and bright holds, but not cartoonish or like a kids' party venue. Make it look world-class: run the design loop, and don't stop to ask me questions, pick sensible defaults.",
+  "created": "2026-10-11T18:47:16+00:00"
+}

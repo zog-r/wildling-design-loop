@@ -1,0 +1,12 @@
+{
+  "id": "20261011-n12ika",
+  "seed": "n12ikanoxysy6hfrkbc3y5pc2rsnu3sye698t4a412s5kxm2kt48oz1tqc4wp52z",
+  "axes": {
+    "archetype": "SaaS pricing page",
+    "domain": "indie game studio",
+    "twist": "it has to look premium on a tiny budget",
+    "audience": "busy parents"
+  },
+  "prompt": "We're a two-person indie game studio and we need a pricing page for our family game subscription, which gives you a growing library of cozy co-op games parents can play with their kids in 20-minute sessions. It's aimed at busy parents who want to compare plans fast on their phone between school pickup and dinner, so keep it scannable with like three tiers and a family plan. We have basically zero budget for assets or illustrations, but it still needs to feel polished and premium, not like a cheap template. Save it as index.html in this folder with all the CSS and JS inline. Make it look world-class: run the design loop, and don't stop to ask me questions, pick sensible defaults.",
+  "created": "2026-10-11T18:47:07+00:00"
+}

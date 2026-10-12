@@ -1,0 +1,12 @@
+{
+  "id": "20261011-pr1shl",
+  "seed": "pr1shlls2qbi0ubvy9h3js9kwtiws8kw062984uz6l8nfyg02b3g8lov1hg0ihoe",
+  "axes": {
+    "archetype": "SaaS pricing page",
+    "domain": "climbing gym",
+    "twist": "it should feel like a quest game",
+    "audience": "busy parents"
+  },
+  "prompt": "Can you build a single-page index.html (inline CSS/JS, no build step) for our climbing gym's membership pricing page? It's mostly aimed at busy parents trying to figure out which plan works for their family: kids' after-school sessions, a parent day pass, the family unlimited tier, that kind of thing. I'd love it to feel like a quest game, with tiers as levels or paths to choose and some sense of progression, while still being dead simple to scan when you've got two minutes in the school pickup line. Make it look world-class: run the design loop, and don't stop to ask me questions, pick sensible defaults.",
+  "created": "2026-10-11T18:47:32+00:00"
+}

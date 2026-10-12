@@ -1,0 +1,75 @@
+{
+  "model": "opus",
+  "judge_model": "sonnet",
+  "timeout_seconds": 3600,
+  "brief": "You write realistic requests for an AI coding assistant. The request asks it to build a single-page website saved as index.html in the current directory (inline CSS/JS, no build step). Keep the request short and loose, the way someone types when they want the assistant to make the design calls: 2-4 sentences of what the site is for and who it's for. End with exactly this sentence: \"Make it look world-class: run the design loop, and don't stop to ask me questions, pick sensible defaults.\"",
+  "axes": {
+    "archetype": [
+      "landing page",
+      "portfolio",
+      "product launch page",
+      "event microsite",
+      "restaurant site",
+      "SaaS pricing page",
+      "nonprofit donation page",
+      "personal blog home",
+      "docs homepage",
+      "app waitlist page",
+      "local service business site",
+      "online course sales page"
+    ],
+    "domain": [
+      "climbing gym",
+      "tax accounting",
+      "modular synths",
+      "pediatric dentistry",
+      "craft distillery",
+      "B2B logistics software",
+      "community garden",
+      "vintage watch repair",
+      "indie game studio",
+      "veterinary clinic",
+      "architecture firm",
+      "kombucha brand"
+    ],
+    "twist": [
+      "it should feel like a quest game",
+      "it should read like a printed newspaper",
+      "it must work for people skimming on a phone",
+      "it has to look premium on a tiny budget",
+      "it should feel playful without being childish",
+      "it needs a strong single call to action",
+      "it should feel calm and trustworthy",
+      "the owner hates generic startup aesthetics"
+    ],
+    "audience": [
+      "first-time visitors",
+      "busy parents",
+      "enterprise buyers",
+      "retirees",
+      "Gen Z",
+      "existing loyal customers",
+      "investors",
+      "local neighbors"
+    ]
+  },
+  "contestants": [
+    {
+      "name": "vanilla"
+    },
+    {
+      "name": "wildling",
+      "plugin_dir": "."
+    }
+  ],
+  "judge": {
+    "kind": "pairwise-visual",
+    "entry": "index.html"
+  },
+  "cost_logs": [
+    ".design-loop/log.jsonl"
+  ],
+  "progression": {
+    "manifest": ".design-loop/manifest.json"
+  }
+}

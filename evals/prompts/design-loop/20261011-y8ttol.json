@@ -1,0 +1,12 @@
+{
+  "id": "20261011-y8ttol",
+  "seed": "y8ttolp6jet20f42c2cha9ze78rj1edja582sph1c11evoe25o49l753sqgk5zvp",
+  "axes": {
+    "archetype": "docs homepage",
+    "domain": "indie game studio",
+    "twist": "it has to look premium on a tiny budget",
+    "audience": "enterprise buyers"
+  },
+  "prompt": "We're a five-person indie game studio that licenses our in-house engine and tooling SDK to bigger companies, and I need a docs homepage saved as index.html (inline CSS/JS, no build step) that points people to getting started, API reference, guides, and support. The readers are enterprise buyers and their technical evaluators, so it has to feel as polished and trustworthy as the big vendors even though we have basically no budget: no stock photo subscriptions, no paid fonts, nothing fancy to host. Make it look world-class: run the design loop, and don't stop to ask me questions, pick sensible defaults.",
+  "created": "2026-10-11T18:46:58+00:00"
+}
