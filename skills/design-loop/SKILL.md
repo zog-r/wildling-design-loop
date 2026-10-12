@@ -41,7 +41,8 @@ For k = 1..directions:
    The seed string must never appear in the page (`loop.py` rejects it).
 2. Build the full page to `.design-loop/variants/dk.html` from the brief (existing target: redesign it and
    keep its content). Keep every must-keep number and date verbatim. Honor `constraints`.
-3. `L shot dk`.
+3. `L shot dk`. Then `L tells .design-loop/variants/dk.html`; fix any hit (see `references/ai-tells.md`)
+   and re-shoot. `pick` refuses a direction with banned tells, and `judge` drops it.
 
 Pick:
 - Interactive: show the user each `shots/dk-desktop-fold.png` and `shots/dk-mobile-fold.png`, ask which
@@ -58,7 +59,9 @@ Repeat:
    components, style. Close the critique's biggest gaps, structure first, then details. Keep the
    direction's aesthetic unless the critique says it fails. Keep must-keep numbers/dates verbatim and at
    least 90% of the reference text.
-3. `L round .design-loop/candidate.html` (integrity check, screenshots, score call, pairwise call). It
+3. `L round .design-loop/candidate.html` (integrity check, screenshots, banned-tell check, score call,
+   pairwise call). Any banned AI tell in `references/ai-tells.md` (accent-colored or italic words in a heading,
+   eyebrow labels, opaque background gradients, nested cards, more than 2 fonts) is an automatic loss. It
    prints the verdict and the current best; always build the next round from the best, never from a
    rejected candidate.
 4. `L decide`. `CONTINUE` → repeat. `PASS`, `STOP_MAX`, or `STOP_PLATEAU` → go to 4.

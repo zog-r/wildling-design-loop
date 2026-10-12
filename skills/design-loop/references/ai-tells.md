@@ -1,19 +1,21 @@
-# AI tells (Deliver round)
+# AI tells
 
-Every model has patterns it overuses. None is wrong on its own, but users now read them as the marks of AI
-slop. **This is not a ban list.** Banning them up front makes the model overthink and invent stranger patterns.
-During refinement, look for each one, try the alternative, and keep whichever looks better. The critic's
-pairwise compare decides.
+Every model has patterns it overuses, and users now read them as the marks of AI slop.
 
-## Overused pattern → better alternative (from the source article's table)
-| Overused | Try instead |
+## Banned: enforced in code
+`scripts/tells.mjs` measures these from computed styles on every screenshot. `L round` rejects any candidate
+that has one, without calling the critic, and `L finish` won't ship a page that has one. Check a page
+yourself with `L tells <page.html>`. Don't design these in and then hope to fix them later.
+
+| Banned | Do instead |
 |---|---|
-| **Eyebrow text**: small, redundant labels over headings that state the obvious ("EXPENSE MANAGEMENT" above a hero about expense management) | Nine times out of ten, delete it and nothing of value is lost |
-| **Generic background gradients** (the blue-to-cyan hero) | Background images, patterns, or even solid colors |
-| **Excessive cards and containers**: every feature boxed, then boxed again | Flatter layouts like grids or tiles; let whitespace do the grouping |
-| **Too many fonts, text styles, and typographic levels**: mixed italics, accent-colored words, extra sizes | Start with 1–2 fonts and 2–4 styles until you need more; use accent colors and italics sparingly |
+| **Accent emphasis**: a word or phrase in a heading set in italics, another color, or another font ("Make space for *better ideas*" with the last words in orange italic), or colored/other-font words in running text | One style per heading. Get emphasis from size, weight, line breaks, or placement. A plain same-color `<em>` in body copy is fine. |
+| **Eyebrow text**: a small uppercase or letter-spaced label right above a heading ("EXPENSE MANAGEMENT" over a hero about expense management) | Delete it. Nine times out of ten nothing of value is lost. If the fact matters, put it in the heading or the body. |
+| **Generic background gradients**: an opaque gradient as a large surface (the blue-to-cyan hero) | Background images, patterns, or a solid color. A translucent scrim over a photo is fine. |
+| **Nested cards**: a bordered, shadowed, or filled box inside another one | Flatter layouts: grids or tiles. Let whitespace do the grouping. |
+| **Too many fonts**: more than 2 families on the page | 1–2 fonts and 2–4 text styles until you truly need more. |
 
-## Also sweep for (from the article's text and the critic's penalty list)
+## Also sweep for (judgment, not gated: try the alternative, keep what looks better)
 - Glows and glowy effects: behind the page, on progress bars, around buttons
 - Random colors and highlights on words in running text
 - Labels that repeat what an image already shows

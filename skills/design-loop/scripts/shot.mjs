@@ -1,8 +1,10 @@
 // Usage: npx -y -p playwright@1.63.0 node shot.mjs <abs.html> <out_dir> <id> [settle_ms]
 // Prints a JSON list of PNG paths, in the order the critic should see them.
-// Also writes <id>-media.json: the rendered desktop box of every <img>/<video>/poster (for the resolution guard).
+// Also writes <id>-media.json: the rendered desktop box of every <img>/<video>/poster (for the resolution guard),
+// and <id>-tells.json: banned AI design tells found by tells.mjs (loop.py rejects any hit).
 import { createRequire } from 'module';
 import { readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { probe } from './tells.mjs';
 
 const [html, outDir, id, settleArg] = process.argv.slice(2);
 const settle = Number(settleArg ?? 8000);
@@ -28,6 +30,7 @@ async function capture(viewport, prefix, startY, maxSections) {
       return srcs.map((src) => ({ src, width: Math.round(r.width), height: Math.round(r.height) }));
     }));
     writeFileSync(`${outDir}/${id}-media.json`, JSON.stringify(media));
+    writeFileSync(`${outDir}/${id}-tells.json`, JSON.stringify(await page.evaluate(probe)));
   }
   if (settle > 0) {
     await page.waitForTimeout(Math.max(0, settle - (Date.now() - t0)));

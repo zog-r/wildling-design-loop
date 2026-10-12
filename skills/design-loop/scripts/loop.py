@@ -230,7 +230,7 @@ def shot(run: Path, id_: str) -> list:
     for seed in (run / "seeds").glob("*.txt"):
         if seed.read_text().strip() in body:
             raise LoopError(f"{html} contains the seed from {seed.name}; the seed must never appear in the design")
-    for old in [*(run / "shots").glob(f"{id_}-*.png"), run / "shots" / f"{id_}-media.json"]:
+    for old in [*(run / "shots").glob(f"{id_}-*.png"), *(run / "shots").glob(f"{id_}-*.json")]:
         old.unlink(missing_ok=True)
     settle = load(run, "brief.json").get("settle_ms", 8000)
     p = subprocess.run(["npx", "-y", "-p", "playwright@1.63.0", "node", str(SKILL / "scripts" / "shot.mjs"),
@@ -243,6 +243,13 @@ def shot(run: Path, id_: str) -> list:
 
 
 SHOT = shot  # swapped in selftest
+
+
+def tells(run: Path, id_: str) -> list:
+    """Banned AI design tells shot.mjs measured on this variant (see tells.mjs). Any hit rejects the page."""
+    side = run / "shots" / f"{id_}-tells.json"
+    hits = json.loads(side.read_text()) if side.is_file() else []
+    return [f"{h['tell']}: {h['where']}" + (f" ({h['why']})" if h.get("why") else "") for h in hits]
 
 
 def intrinsic_width(path: Path) -> int | None:
@@ -449,6 +456,8 @@ def cmd_pick(run: Path, winner: str, notes: dict | None = None) -> None:
     if winner not in ids:
         raise LoopError(f"{winner} not in discover variants {ids}")
     shots = {i: shots_for(run, i) for i in ids}
+    if tells(run, winner):
+        raise LoopError(f"{winner} has banned AI tells: " + "; ".join(tells(run, winner)))
     score, text = score_call(run, winner, shots[winner])
     for i in ids:
         if i == winner:
@@ -467,7 +476,12 @@ def cmd_judge(run: Path) -> None:
     if not ids:
         raise LoopError("no variants/d*.html to judge")
     shots = {i: shots_for(run, i) for i in ids}
-    winner, notes = knockout(ids, lambda c, o: compare_call(run, c, shots[c], o, shots[o]))
+    banned = {i: tells(run, i) for i in ids if tells(run, i)}
+    if len(banned) == len(ids):
+        raise LoopError("every direction has banned AI tells; fix them and re-run `shot`: " + json.dumps(banned))
+    winner, notes = knockout([i for i in ids if i not in banned],
+                             lambda c, o: compare_call(run, c, shots[c], o, shots[o]))
+    notes.update({i: "tells: " + "; ".join(t) for i, t in banned.items()})
     cmd_pick(run, winner, notes)
 
 
@@ -488,14 +502,21 @@ def cmd_round(run: Path, src: str, phase: str) -> None:
         won, score = False, None
     else:
         shots = SHOT(run, id_)
-        warnings = upscaled(run, id_)
-        if warnings:
-            log(run, {"step": id_, "kind": "resolution", "warnings": warnings})
-        score, text = score_call(run, id_, shots)
-        best_won, reason = compare_call(run, id_, shots, st["best"], shots_for(run, st["best"]))
-        won = accept(best_won, score, st["best_score"])
-        note = first_line(text, "GAP") if won else f"lost to {st['best']}: {reason}"
-        record(st, id_, phase, shots, score, "win" if won else "loss", note)
+        banned = tells(run, id_)
+        chk["tells"] = banned
+        if banned:
+            log(run, {"step": id_, "kind": "tells", "hits": banned})
+            record(st, id_, phase, shots, None, "loss", "tells: " + "; ".join(banned))
+            won, score = False, None
+        else:
+            warnings = upscaled(run, id_)
+            if warnings:
+                log(run, {"step": id_, "kind": "resolution", "warnings": warnings})
+            score, text = score_call(run, id_, shots)
+            best_won, reason = compare_call(run, id_, shots, st["best"], shots_for(run, st["best"]))
+            won = accept(best_won, score, st["best_score"])
+            note = first_line(text, "GAP") if won else f"lost to {st['best']}: {reason}"
+            record(st, id_, phase, shots, score, "win" if won else "loss", note)
     if won:
         st.update(best=id_, best_score=score)
     if counted:
@@ -522,6 +543,9 @@ def cmd_finish(run: Path) -> None:
         raise LoopError("nothing to finish")
     if not st["stop_reason"]:
         raise LoopError("run `decide` until it returns a stop decision first")
+    if tells(run, st["best"]):
+        raise LoopError(f"{st['best']} has banned AI tells; win a round without them first: "
+                        + "; ".join(tells(run, st["best"])))
     dest = Path(b.get("output_file") or b["target"])
     shutil.copyfile(run / "variants" / f"{st['best']}.html", dest)
     assets = run / "variants" / "assets"
@@ -535,6 +559,13 @@ def cmd_finish(run: Path) -> None:
 def cmd_status(run: Path) -> None:
     st = load(run, "state.json")
     print(json.dumps({k: st[k] for k in ("best", "best_score", "reference", "rounds", "stale", "stop_reason")}))
+
+
+def cmd_tells(html: str) -> int:
+    p = subprocess.run(["npx", "-y", "-p", "playwright@1.63.0", "node", str(SKILL / "scripts" / "tells.mjs"),
+                        str(Path(html).resolve())], capture_output=True, text=True, timeout=120)
+    print(p.stdout.strip() or p.stderr.strip()[-800:])
+    return p.returncode
 
 
 def cmd_integrity(ref: str, cand: str, brief: str | None) -> int:
@@ -749,6 +780,9 @@ def selftest() -> None:
                     replies[:] = [garbage, "GAP: type\nSCORE: 7/10", "WINNER: A\nREASON: x"]
                     cmd_round(run, str(cand), "define")
                     cmd_decide(run)
+                    (run / "shots" / "v3-tells.json").write_text(json.dumps(
+                        [{"tell": "accent-emphasis", "where": "<em> in <h1>", "why": "color+italic"}]))
+                    cmd_round(run, str(cand), "deliver")  # tells -> loss, no critic call
                     replies[:] = ["GAP: less\nSCORE: 9/10", "WINNER: B\nREASON: best still better"]
                     cmd_round(run, str(cand), "deliver")
                     (run / "variants" / "assets").mkdir()
@@ -763,7 +797,9 @@ def selftest() -> None:
                 assert m["winner"] == "v2" and m["stop_reason"] == "STOP_MAX"
                 assert [(i["id"], i["phase"], i["verdict"]) for i in m["iterations"]] == [
                     ("d1", "discover", "loss"), ("d2", "discover", "win"),
-                    ("v1", "define", "loss"), ("v2", "define", "win"), ("v3", "deliver", "loss")]
+                    ("v1", "define", "loss"), ("v2", "define", "win"),
+                    ("v3", "deliver", "loss"), ("v4", "deliver", "loss")]
+                assert m["iterations"][4]["note"].startswith("tells: accent-emphasis") and m["iterations"][4]["score"] is None
                 assert m["iterations"][2]["note"].startswith("integrity:") and m["iterations"][2]["score"] is None
                 assert set(m["iterations"][0]) == {"id", "phase", "html", "shots", "score", "verdict", "note", "ts"}
                 logs = [json.loads(x) for x in (run / "log.jsonl").read_text().splitlines()]
@@ -840,6 +876,18 @@ def selftest_shots() -> None:
         w = upscaled(run, "timed")
         assert len(w) == 1 and w[0].startswith("assets/a.png: 200px wide, shown at 600px"), w
         assert upscaled(run, "static") == []
+        assert tells(run, "static") == []
+        (run / "variants" / "slop.html").write_text(
+            "<body style='font-family:Georgia'><p style='font:12px Arial;text-transform:uppercase'>Retreat</p>"
+            "<h1 style='font-size:64px'>Make space <em style='color:#e60'>better</em></h1>"
+            "<p>Plain <em>stress</em> in running text is fine, <span style='font-family:Courier'>this</span> is not.</p>"
+            "<section style='height:600px;background:linear-gradient(#03f,#0cf)'>"
+            "<div style='width:400px;height:300px;padding:20px;box-shadow:0 1px 4px #000'>"
+            "<div style='width:300px;height:200px;border:1px solid #ccc'>x</div></div></section></body>")
+        shot(run, "slop")
+        assert sorted(t.split(":")[0] for t in tells(run, "slop")) == [
+            "accent-emphasis", "accent-emphasis", "background-gradient", "eyebrow", "nested-cards",
+            "too-many-fonts"], tells(run, "slop")
 
 
 def main() -> int:
@@ -861,6 +909,7 @@ def main() -> int:
     i.add_argument("reference")
     i.add_argument("candidate")
     i.add_argument("--brief")
+    sub.add_parser("tells", help="exit 1 if the page has banned AI design tells").add_argument("html")
     c = sub.add_parser("copy")
     c.add_argument("html")
     c.add_argument("--baseline", help="gate: exit 1 if html has more detector issues than this file")
@@ -888,6 +937,8 @@ def main() -> int:
             cmd_status(run)
         elif a.cmd == "integrity":
             return cmd_integrity(a.reference, a.candidate, a.brief)
+        elif a.cmd == "tells":
+            return cmd_tells(a.html)
         elif a.cmd == "copy":
             return cmd_copy(run, a.html, a.baseline)
         elif a.cmd == "selftest":

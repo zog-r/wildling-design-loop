@@ -43,8 +43,9 @@ Copy the best page to `.design-loop/candidate.html`, then edit it in three passe
    - Replace custom buttons, inputs, and controls with native-looking ones where the custom ones look worse.
    - Lean image-centric. Drop gradients, glows, and containers that do no grouping work.
    - Make text smaller, simpler, and tighter.
-2. **AI tells.** Read `<skill>/references/ai-tells.md`. For each tell present, apply its alternative. It's
-   not a ban list: if the alternative clearly looks worse in context, keep the original and say why.
+2. **AI tells.** Read `<skill>/references/ai-tells.md`. Remove every **Banned** tell, no exceptions, then run
+   `python3 <skill>/scripts/loop.py tells .design-loop/candidate.html` until it exits 0. For the
+   other tells, apply the alternative unless it clearly looks worse in context, and say why you kept it.
 3. **Copy.** Run `python3 <skill>/scripts/loop.py copy .design-loop/candidate.html --baseline
    .design-loop/variants/<best>.html`. Read `<skill>/references/copy.md` and, when it exists,
    `~/.claude/skills/avoid-ai-writing/references/patterns.md`. Treat every line as a Lorem ipsum
