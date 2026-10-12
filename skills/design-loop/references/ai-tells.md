@@ -5,7 +5,8 @@ Every model has patterns it overuses, and users now read them as the marks of AI
 ## Banned: enforced in code
 `scripts/tells.mjs` measures these from computed styles on every screenshot. `L round` rejects any candidate
 that has one, without calling the critic, and `L finish` won't ship a page that has one. Check a page
-yourself with `L tells <page.html>`. Don't design these in and then hope to fix them later.
+yourself with `L tells <page.html>`, or `L tells <url>` for pages that only render with live data
+(check each data state: logged in, empty, full). Don't design these in and then hope to fix them later.
 
 | Banned | Do instead |
 |---|---|

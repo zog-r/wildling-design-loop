@@ -561,9 +561,11 @@ def cmd_status(run: Path) -> None:
     print(json.dumps({k: st[k] for k in ("best", "best_score", "reference", "rounds", "stale", "stop_reason")}))
 
 
-def cmd_tells(html: str) -> int:
-    p = subprocess.run(["npx", "-y", "-p", "playwright@1.63.0", "node", str(SKILL / "scripts" / "tells.mjs"),
-                        str(Path(html).resolve())], capture_output=True, text=True, timeout=120)
+def cmd_tells(target: str) -> int:
+    if not re.match(r"(https?|file):", target):
+        target = str(Path(target).resolve())
+    p = subprocess.run(["npx", "-y", "-p", "playwright@1.63.0", "node", str(SKILL / "scripts" / "tells.mjs"), target],
+                       capture_output=True, text=True, timeout=120)
     print(p.stdout.strip() or p.stderr.strip()[-800:])
     return p.returncode
 
@@ -888,6 +890,9 @@ def selftest_shots() -> None:
         assert sorted(t.split(":")[0] for t in tells(run, "slop")) == [
             "accent-emphasis", "accent-emphasis", "background-gradient", "eyebrow", "nested-cards",
             "too-many-fonts"], tells(run, "slop")
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert cmd_tells((run / "variants" / "slop.html").resolve().as_uri()) == 1  # URL form
+            assert cmd_tells(str(run / "variants" / "static.html")) == 0  # path form
 
 
 def main() -> int:
@@ -909,7 +914,7 @@ def main() -> int:
     i.add_argument("reference")
     i.add_argument("candidate")
     i.add_argument("--brief")
-    sub.add_parser("tells", help="exit 1 if the page has banned AI design tells").add_argument("html")
+    sub.add_parser("tells", help="exit 1 if the page (file or URL) has banned AI design tells").add_argument("html")
     c = sub.add_parser("copy")
     c.add_argument("html")
     c.add_argument("--baseline", help="gate: exit 1 if html has more detector issues than this file")

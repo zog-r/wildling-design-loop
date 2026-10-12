@@ -1,6 +1,7 @@
 // Hard-banned AI design tells, measured from computed styles in a real browser (desktop viewport).
 // shot.mjs runs `probe` on every variant and writes <id>-tells.json; loop.py rejects any page with hits.
-// Standalone: npx -y -p playwright@1.63.0 node tells.mjs <abs.html>  -> prints the JSON list, exit 1 on hits.
+// Standalone: npx -y -p playwright@1.63.0 node tells.mjs <abs.html | url>  -> prints the JSON list, exit 1 on hits.
+// A URL lets you check pages that only render with live data (e.g. http://localhost:3000/dashboard).
 import { createRequire } from 'module';
 
 export function probe() {
@@ -81,7 +82,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const { chromium } = createRequire(bin + '/../')('playwright');
   const browser = await chromium.launch({ channel: 'chrome' });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.goto('file://' + process.argv[2], { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
+  const target = process.argv[2];
+  await page.goto(/^(https?|file):/.test(target) ? target : 'file://' + target, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(1000); // client-rendered content that lands after network idle
   const hits = await page.evaluate(probe);
   await browser.close();
   console.log(JSON.stringify(hits, null, 1));
