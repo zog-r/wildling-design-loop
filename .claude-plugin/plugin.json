@@ -1,6 +1,6 @@
 {
   "name": "wildling-design",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Studio-level page design: ambition gate, seeded exploration, blind critic loop, generated images/3D/video, and a polish agent.",
   "author": { "name": "zog-r" }
 }

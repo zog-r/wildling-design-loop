@@ -12,11 +12,15 @@
 2. **Discover.** Each direction starts from a random seed string (String Seed of Thought, Sakana AI) so the
    directions come out different. You pick one.
 3. **Define.** Full-page redesign rounds. Each round a critic judges the page in a fresh `claude -p` process,
-   seeing screenshots only: no code, no brief, no earlier critiques, and never the pass grade. Each fold is
+   seeing screenshots only: no code, no brief, and never the pass grade. It scores four criteria
+   (composition, type, color, craft) against fixed anchors, and `loop.py` averages them. It also gets its own
+   earlier findings on the winning line (`ledger.md`): it marks each one fixed, open or overshot, and it may
+   not reverse a fixed one, so the critique can't flip-flop between rounds. Each fold is
    shot twice, on load and again after timed motion settles (`settle_ms`, default 8 s), so autoplay heroes and
    crossfades are judged by what a visitor actually sees. A version only
    becomes the new best if it
-   - wins a side-by-side comparison against the current best,
+   - wins a side-by-side comparison against the current best in both A/B orders (a split verdict is
+     position bias, so the best stays),
    - scores at least as high, and
    - passes a check that none of the original text, numbers or dates were lost, and that no API key leaked
      into the page.
@@ -32,8 +36,10 @@
    containers, too many type styles…), and rewrites copy until the avoid-ai-writing detector finds no more
    issues than before.
 
-The run stops when the score reaches the pass grade (`PASS`), hits the round cap (`STOP_MAX`), or goes 3 rounds
-without a new best (`STOP_PLATEAU`).
+The run stops when the score reaches the pass grade (`PASS`), hits the round cap (`STOP_MAX`), or goes 2 rounds
+without a new best (`STOP_PLATEAU`: stalled or getting worse). On a plateau or the cap, you see the best page
+and its round-by-round scores and choose: use it, or continue for 3 more rounds at a higher ambition
+(`loop.py ambition`).
 
 Method from Anshu Chimala's "How to turn your AI into a world-class designer" (Lenny's Newsletter,
 2026-09-01).
@@ -180,7 +186,8 @@ in `.design-loop/` inside the project you run it in.
 
 ## Cost
 Critic calls run with lean flags, so each call pays about $0.02 of fixed overhead instead of loading your whole
-Claude Code config. A full run (3 directions, 4–8 rounds, polish) averaged about $16 in the arena evals above.
+Claude Code config. A full run (3 directions, 4–8 rounds, polish) averaged about $16 in the arena evals above
+(before 0.4.0, which runs the side-by-side in both A/B orders: one more critic call per round).
 
 ## Test
 ```bash

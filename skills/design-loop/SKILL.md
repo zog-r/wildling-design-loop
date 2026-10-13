@@ -49,22 +49,33 @@ Pick:
   direction to take, then `L pick dk`.
 - Headless: `L judge` (pairwise knockout by the critic).
 
-Both print the best id and its critique path.
+Both print the best id, its critique path, and `ledger.md`.
 
 ## 3. Define (loop)
 
 Repeat:
-1. Read `.design-loop/variants/<best>.html` and `.design-loop/critiques/<best>.md`.
-2. Write a candidate to `.design-loop/candidate.html`. You may redesign the whole page: layout, structure,
-   components, style. Close the critique's biggest gaps, structure first, then details. Keep the
-   direction's aesthetic unless the critique says it fails. Keep must-keep numbers/dates verbatim and at
-   least 90% of the reference text.
+1. Read `.design-loop/variants/<best>.html` and `.design-loop/ledger.md`. The ledger is every gap the critic
+   has raised on the line of winners, each `OPEN`, `FIXED`, or `OVERSHOT`; `loop.py` keeps it and feeds it
+   back to the critic so it can't flip-flop.
+2. Write a candidate to `.design-loop/candidate.html`. Fix the top 3 `OPEN`/`OVERSHOT` items, structure
+   first; dial `OVERSHOT` items back, don't reverse them. Never undo a `FIXED` item, and change nothing the
+   ledger doesn't ask for: an unrequested change is how a page gets worse. Keep the direction's aesthetic.
+   Keep must-keep numbers/dates verbatim and at least 90% of the reference text.
 3. `L round .design-loop/candidate.html` (integrity check, screenshots, banned-tell check, score call,
    pairwise call). Any banned AI tell in `references/ai-tells.md` (accent-colored or italic words in a heading,
    eyebrow labels, opaque background gradients, nested cards, more than 2 fonts) is an automatic loss. It
    prints the verdict and the current best; always build the next round from the best, never from a
-   rejected candidate.
-4. `L decide`. `CONTINUE` → repeat. `PASS`, `STOP_MAX`, or `STOP_PLATEAU` → go to 4.
+   rejected candidate. A candidate wins only if it wins the side-by-side in both A/B orders and its score
+   (the mean of four rubric scores, anchored to the best's) is at least the best's.
+4. `L decide`. `CONTINUE` → repeat. `PASS` → go to 4. `STOP_PLATEAU` (2 rounds without a new best: the
+   loop stalled or the candidates got worse) or `STOP_MAX` prints a second line with the best, its score,
+   and every round's score.
+   - Headless: go to 4.
+   - Interactive: show the user the best's fold shots, its score, and the round scores, then AskUserQuestion:
+     "Use it" (go to 4) or "Continue with more ambition". On continue, `L ambition` (3 more rounds) and make
+     the next candidate a bigger swing, not a tweak: rebuild the composition around the top `OPEN` structural
+     item with stronger scale contrast and one signature move drawn from the brief's `inspiration`. Keep the
+     palette, type, every `FIXED` item, and every must-keep fact. Then repeat from 1.
 
 **Enrich** (optional, part of step 2, when brief `enrich` isn't `off`): if the critique calls the visuals
 plain or flat, or gradients/shapes stand in for imagery, read `references/media.md` and add generated images,
@@ -87,8 +98,8 @@ Then `L round .design-loop/candidate.html --phase deliver`. It goes through the 
 ## 5. Finish
 
 `L finish` writes the best to `output_file` (or over the target; the original stays in `variants/v0.html`)
-and finalizes `manifest.json`. Report: winner id, score, stop reason, output path, and critic cost from
-`.design-loop/log.jsonl`.
+and finalizes `manifest.json`. Report: winner id, score, round scores, stop reason, output path, and critic cost
+from `.design-loop/log.jsonl`.
 
 If any `L` command exits non-zero, show its error. An `AUTH ERROR` means `claude -p` is not logged in:
 stop and tell the user.

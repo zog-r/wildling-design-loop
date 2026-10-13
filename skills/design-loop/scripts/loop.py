@@ -27,7 +27,10 @@ DEFAULTS = {"inspiration": "", "moodboard": [], "constraints": "", "mood": [], "
             "directions": 3, "max_iters": 6, "critic_model": "fable", "pass_grade": 9, "polish": True,
             "enrich": "images", "media_model": "claude-opus-5-5", "settle_ms": 8000}
 ENRICH = ("images", "images+video", "off")
-PLATEAU = 3
+PLATEAU = 2  # rounds without a new best: a plateau, or a degrade (a worse page never wins)
+AMBITION_ROUNDS = 3
+CRITERIA = ("COMPOSITION", "TYPE", "COLOR", "CRAFT")
+MAX_ITEMS = 6
 TOKEN_LOSS_MAX = 0.10
 UPSCALE_MAX = 1.3
 AUTH_RE = re.compile(r"\b401\b|authenticat|invalid api key|not logged in|/login|oauth token", re.I)
@@ -111,6 +114,11 @@ def read_env(path: Path) -> dict:
 
 def write_state(run: Path, st: dict) -> None:
     save(run, "state.json", st)
+    if st.get("ledger"):
+        (run / "ledger.md").write_text(
+            f"# Ledger (best: {st['best']}, {st['best_score']})\n"
+            "Fix OPEN and OVERSHOT items, top first, at most 3 per round. Never undo a FIXED item.\n\n"
+            + "\n".join(f"- P{i['n']} [{i['status']}] {i['text']}" for i in st["ledger"]) + "\n")
     save(run, "manifest.json", {"iterations": st["iterations"], "winner": st.get("best"),
                                 "stop_reason": st.get("stop_reason")})
 
@@ -134,12 +142,37 @@ def parse_envelope(stdout: str) -> dict:
             "cost_usd": float(data.get("total_cost_usd") or 0), "is_error": bool(data.get("is_error"))}
 
 
-def parse_score(text: str):
-    m = re.findall(r"SCORE:\s*(\d+(?:\.\d)?)\s*/\s*10", text)
-    if not m:
-        return None
-    s = float(m[-1])
-    return s if 0 <= s <= 10 else None
+def parse_review(text: str):
+    """Four rubric scores; the total is their mean, computed here so the critic can't drift on a gut number."""
+    crit = {}
+    for k in CRITERIA:
+        m = re.findall(rf"^\W*{k}:\s*(\d+(?:\.\d)?)\s*/\s*10", text, re.M)
+        if not m or not 0 <= float(m[-1]) <= 10:
+            return None
+        crit[k] = float(m[-1])
+    prior = {int(n): st.upper() for n, st in
+             re.findall(r"^\W*P(\d+)\W*:\s*(FIXED|OPEN|OVERSHOT)\b", text, re.M | re.I)}
+    items = [ln.strip() for ln in re.findall(r"^\s*[-*]\s+(.+)$", text, re.M)]
+    items = [i for i in items if not re.match(r"P\d+\W*:|(?:%s):" % "|".join(CRITERIA), i)]
+    return {"score": round(sum(crit.values()) / len(crit), 1), "criteria": crit, "prior": prior,
+            "items": items[:MAX_ITEMS]}
+
+
+def update_ledger(ledger: list, review: dict) -> list:
+    """Statuses from the review of the page that just became best, then its new gaps as OPEN."""
+    out = [{**i, "status": review["prior"].get(i["n"], i["status"])} for i in ledger]
+    n = max((i["n"] for i in out), default=0)
+    for k, text in enumerate(review["items"], 1):
+        out.append({"n": n + k, "status": "OPEN", "text": text[:300]})
+    return out
+
+
+def prior_block(st: dict) -> str:
+    if not st.get("ledger"):
+        return ""
+    c = st["best_criteria"]
+    return ("\n\nPrevious review:\n" + ", ".join(f"{k} {c[k]:g}/10" for k in CRITERIA) + "\n"
+            + "\n".join(f"P{i['n']} [{i['status']}] {i['text']}" for i in st["ledger"]))
 
 
 def parse_winner(text: str):
@@ -201,23 +234,28 @@ def moodboard_block(run: Path) -> str:
     return "\n\nMoodboard images:\n" + "\n".join(mb) if mb else ""
 
 
-def score_call(run: Path, id_: str, shots: list) -> tuple:
+def score_call(run: Path, id_: str, shots: list, prior: str = "") -> tuple:
     prompt = ((SKILL / "critic-prompt.md").read_text() + "\n" + image_block("Screenshots:", shots, run)
-              + moodboard_block(run))
-    score, text = critic(run, id_, prompt, parse_score)
-    (run / "critiques" / f"{id_}.md").write_text(text)
-    return score, text
+              + moodboard_block(run) + prior)
+    review, text = critic(run, id_, prompt, parse_review)
+    (run / "critiques" / f"{id_}.md").write_text(text + f"\n\nSCORE: {review['score']}/10\n")
+    return review, text
 
 
 def compare_call(run: Path, cand: str, cand_shots: list, other: str, other_shots: list) -> tuple:
-    """Returns (cand_won, reason). Order randomized to avoid position bias."""
-    flip = secrets.randbelow(2) == 1
-    a, b = ((other, other_shots), (cand, cand_shots)) if flip else ((cand, cand_shots), (other, other_shots))
-    prompt = ((SKILL / "compare-prompt.md").read_text() + "\n" + image_block("Design A:", a[1], run) + "\n\n"
-              + image_block("Design B:", b[1], run) + moodboard_block(run))
-    winner, text = critic(run, f"{cand}-vs-{other}", prompt, parse_winner)
-    (run / "critiques" / f"{cand}-vs-{other}.md").write_text(f"A={a[0]} B={b[0]}\n{text}")
-    return (a[0] if winner == "A" else b[0]) == cand, first_line(text, "REASON")
+    """Returns (cand_won, reason). Asked twice with A/B swapped; cand must win both. A split is position bias,
+    not a preference, so the incumbent keeps its place."""
+    reasons = []
+    for k, (a, b) in enumerate((((cand, cand_shots), (other, other_shots)),
+                                ((other, other_shots), (cand, cand_shots))), 1):
+        prompt = ((SKILL / "compare-prompt.md").read_text() + "\n" + image_block("Design A:", a[1], run)
+                  + "\n\n" + image_block("Design B:", b[1], run) + moodboard_block(run))
+        winner, text = critic(run, f"{cand}-vs-{other}-{k}", prompt, parse_winner)
+        (run / "critiques" / f"{cand}-vs-{other}-{k}.md").write_text(f"A={a[0]} B={b[0]}\n{text}")
+        if (a[0] if winner == "A" else b[0]) != cand:
+            return False, first_line(text, "REASON")
+        reasons.append(first_line(text, "REASON"))
+    return True, reasons[-1]
 
 
 # ---------- screenshots ----------
@@ -374,10 +412,10 @@ def accept(cand_won: bool, cand_score: float, best_score: float) -> bool:
     return cand_won and cand_score >= best_score
 
 
-def decide(best_score, rounds: int, stale: int, pass_grade: float, max_iters: int) -> str:
+def decide(best_score, rounds: int, stale: int, pass_grade: float, cap: int) -> str:
     if best_score is not None and best_score >= pass_grade:
         return "PASS"
-    if rounds >= max_iters:
+    if rounds >= cap:
         return "STOP_MAX"
     if stale >= PLATEAU:
         return "STOP_PLATEAU"
@@ -405,8 +443,8 @@ def cmd_init(run: Path, brief_path: str) -> None:
     for d in SUBDIRS:
         (run / d).mkdir(parents=True, exist_ok=True)
     save(run, "brief.json", b)
-    st = {"iterations": [], "best": None, "best_score": None, "reference": None,
-          "rounds": 0, "stale": 0, "stop_reason": None}
+    st = {"iterations": [], "best": None, "best_score": None, "best_criteria": None, "ledger": [],
+          "reference": None, "rounds": 0, "stale": 0, "cap": b["max_iters"], "ambition": 0, "stop_reason": None}
     if b["target"] != "new":
         shutil.copyfile(b["target"], run / "variants" / "v0.html")
         st["reference"] = "variants/v0.html"
@@ -458,17 +496,19 @@ def cmd_pick(run: Path, winner: str, notes: dict | None = None) -> None:
     shots = {i: shots_for(run, i) for i in ids}
     if tells(run, winner):
         raise LoopError(f"{winner} has banned AI tells: " + "; ".join(tells(run, winner)))
-    score, text = score_call(run, winner, shots[winner])
+    review, text = score_call(run, winner, shots[winner])
+    score = review["score"]
     for i in ids:
         if i == winner:
             record(st, i, "discover", shots[i], score, "win", first_line(text, "GAP"))
         else:
             record(st, i, "discover", shots[i], None, "loss", (notes or {}).get(i, "not picked"))
-    st.update(best=winner, best_score=score)
+    st.update(best=winner, best_score=score, best_criteria=review["criteria"], ledger=update_ledger([], review))
     if st["reference"] is None:
         st["reference"] = f"variants/{winner}.html"
     write_state(run, st)
-    print(json.dumps({"best": winner, "best_score": score, "critique": f"critiques/{winner}.md"}))
+    print(json.dumps({"best": winner, "best_score": score, "critique": f"critiques/{winner}.md",
+                      "ledger": "ledger.md"}))
 
 
 def cmd_judge(run: Path) -> None:
@@ -512,9 +552,12 @@ def cmd_round(run: Path, src: str, phase: str) -> None:
             warnings = upscaled(run, id_)
             if warnings:
                 log(run, {"step": id_, "kind": "resolution", "warnings": warnings})
-            score, text = score_call(run, id_, shots)
+            review, text = score_call(run, id_, shots, prior_block(st))
+            score = review["score"]
             best_won, reason = compare_call(run, id_, shots, st["best"], shots_for(run, st["best"]))
             won = accept(best_won, score, st["best_score"])
+            if won:
+                st.update(best_criteria=review["criteria"], ledger=update_ledger(st["ledger"], review))
             note = first_line(text, "GAP") if won else f"lost to {st['best']}: {reason}"
             record(st, id_, phase, shots, score, "win" if won else "loss", note)
     if won:
@@ -525,16 +568,33 @@ def cmd_round(run: Path, src: str, phase: str) -> None:
     write_state(run, st)
     print(json.dumps({"id": id_, "verdict": "win" if won else "loss", "score": score,
                       "integrity": chk, "resolution": warnings, "best": st["best"], "best_score": st["best_score"],
-                      "next_from": f"variants/{st['best']}.html", "critique": f"critiques/{st['best']}.md"}))
+                      "next_from": f"variants/{st['best']}.html", "critique": f"critiques/{st['best']}.md",
+                      "ledger": "ledger.md"}))
 
 
 def cmd_decide(run: Path) -> None:
     st, b = load(run, "state.json"), load(run, "brief.json")
-    d = decide(st["best_score"], st["rounds"], st["stale"], b["pass_grade"], b["max_iters"])
+    d = decide(st["best_score"], st["rounds"], st["stale"], b["pass_grade"], st["cap"])
     if d != "CONTINUE":
         st["stop_reason"] = d
         write_state(run, st)
     print(d)
+    if d != "CONTINUE":
+        rounds = [it for it in st["iterations"] if it["phase"] == "define"]
+        print(json.dumps({"best": st["best"], "best_score": st["best_score"], "ambition": st["ambition"],
+                          "scores": [it["score"] for it in rounds], "verdicts": [it["verdict"] for it in rounds],
+                          "shots": [s for s in shots_for(run, st["best"]) if s.endswith("-fold.png")]}))
+
+
+def cmd_ambition(run: Path) -> None:
+    """Continue a stalled run with a bigger swing: AMBITION_ROUNDS more rounds, plateau counter reset."""
+    st = load(run, "state.json")
+    if st["stop_reason"] not in ("STOP_PLATEAU", "STOP_MAX"):
+        raise LoopError("ambition continues a plateaued or maxed-out run; `decide` hasn't stopped it")
+    st.update(ambition=st["ambition"] + 1, stale=0, stop_reason=None, cap=st["rounds"] + AMBITION_ROUNDS)
+    write_state(run, st)
+    print(json.dumps({"ambition": st["ambition"], "rounds_left": AMBITION_ROUNDS,
+                      "next_from": f"variants/{st['best']}.html", "ledger": "ledger.md"}))
 
 
 def cmd_finish(run: Path) -> None:
@@ -558,7 +618,8 @@ def cmd_finish(run: Path) -> None:
 
 def cmd_status(run: Path) -> None:
     st = load(run, "state.json")
-    print(json.dumps({k: st[k] for k in ("best", "best_score", "reference", "rounds", "stale", "stop_reason")}))
+    print(json.dumps({k: st[k] for k in ("best", "best_score", "reference", "rounds", "stale", "cap", "ambition",
+                                         "stop_reason")}))
 
 
 def cmd_tells(target: str) -> int:
@@ -644,9 +705,23 @@ def selftest() -> None:
                                      "cache_creation_input_tokens": 100, "cache_read_input_tokens": 1000}}))
     assert env["tokens"] == 1115 and env["cost_usd"] == 0.12 and not env["is_error"]
     assert parse_envelope(json.dumps([{"type": "system"}, {"type": "result", "result": "r"}]))["result"] == "r"
-    assert parse_score("SCORE: 7/10") == 7.0
-    assert parse_score("SCORE: 3/10 early\n...\nSCORE: 8.5 / 10") == 8.5
-    assert parse_score("score maybe 8") is None and parse_score("SCORE: 11/10") is None
+    crit = "\nCOMPOSITION: 6/10\nTYPE: 7/10\nCOLOR: 5.5/10\n**CRAFT: 6 / 10**"
+    r = parse_review("GAP: hero\n- Hero too small: scale it\n* Nav cramped\nP1: FIXED\n- P2: overshot\n"
+                     "- COMPOSITION: 1/10 draft" + crit)
+    assert r["score"] == 6.1 and r["criteria"]["COLOR"] == 5.5 and r["criteria"]["CRAFT"] == 6.0
+    assert r["prior"] == {1: "FIXED", 2: "OVERSHOT"}
+    assert r["items"] == ["Hero too small: scale it", "Nav cramped"]
+    assert parse_review("GAP: x\nCOMPOSITION: 6/10\nTYPE: 7/10\nCOLOR: 5/10") is None  # missing CRAFT
+    assert parse_review(crit.replace("TYPE: 7", "TYPE: 11")) is None
+    assert len(parse_review("".join(f"- gap {i}\n" for i in range(9)) + crit)["items"]) == MAX_ITEMS
+    # ledger: statuses move, new gaps append, unknown P-numbers ignored
+    led = update_ledger([], {"items": ["a", "b"], "prior": {}})
+    assert led == [{"n": 1, "status": "OPEN", "text": "a"}, {"n": 2, "status": "OPEN", "text": "b"}]
+    led = update_ledger(led, {"items": ["c"], "prior": {1: "FIXED", 9: "OPEN"}})
+    assert [(i["n"], i["status"]) for i in led] == [(1, "FIXED"), (2, "OPEN"), (3, "OPEN")]
+    pb = prior_block({"ledger": led, "best_criteria": dict.fromkeys(CRITERIA, 6.5)})
+    assert "COMPOSITION 6.5/10" in pb and "P1 [FIXED] a" in pb and "P3 [OPEN] c" in pb
+    assert prior_block({"ledger": []}) == ""
     assert parse_winner("WINNER: B\nREASON: tighter grid") == "B"
     assert parse_winner("**WINNER: A**") == "A" and parse_winner("A is better") is None
     assert first_line("GAP: hero is weak\n- x", "GAP") == "hero is weak"
@@ -657,8 +732,8 @@ def selftest() -> None:
     assert decide(9.0, 1, 0, 9, 6) == "PASS"
     assert decide(9.5, 6, 3, 9, 6) == "PASS"
     assert decide(8.0, 6, 0, 9, 6) == "STOP_MAX"
-    assert decide(8.0, 4, 3, 9, 6) == "STOP_PLATEAU"
-    assert decide(8.0, 2, 2, 9, 6) == "CONTINUE"
+    assert decide(8.0, 4, 2, 9, 6) == "STOP_PLATEAU"
+    assert decide(8.0, 2, 1, 9, 6) == "CONTINUE"
     assert decide(None, 0, 0, 9, 6) == "CONTINUE"
     # acceptance: needs pairwise win AND score >= best
     assert accept(True, 8.0, 8.0) and accept(True, 8.5, 8.0)
@@ -738,9 +813,14 @@ def selftest() -> None:
         "d1-desktop-fold", "d1-desktop-settled", "d1-desktop-01", "d1-desktop-02",
         "d1-mobile-fold", "d1-mobile-settled", "d1-mobile-01"]
     # end-to-end flow with fake critic + fake screenshots
-    replies = []
+    replies, prompts = [], []
+
+    def rv(score, items=(), prior=""):
+        return ("GAP: g\n" + "".join(f"- {i}\n" for i in items) + prior
+                + "".join(f"{k}: {score}/10\n" for k in CRITERIA))
 
     def fake_call(model, prompt, cwd):
+        prompts.append(prompt)
         text = replies.pop(0)
         return text if text.startswith("{") else json.dumps(
             {"type": "result", "result": text, "is_error": False, "total_cost_usd": 0.01,
@@ -757,7 +837,7 @@ def selftest() -> None:
             run = base / ".design-loop"
             (base / "brief.json").write_text(json.dumps(
                 {"target": "new", "purpose": "p", "must_keep": mk, "output_file": str(base / "out.html"),
-                 "max_iters": 2, "polish": True}))
+                 "max_iters": 3, "polish": True}))
             cwd = os.getcwd()
             os.chdir(base)
             quiet = contextlib.ExitStack()
@@ -767,45 +847,72 @@ def selftest() -> None:
                 cmd_init(run, "brief.json")
                 for i in (1, 2):
                     (run / "variants" / f"d{i}.html").write_text(ref)
-                replies[:] = ["WINNER: A\nREASON: bolder", "GAP: hero\nSCORE: 6/10"]
-                real = secrets.randbelow
-                secrets.randbelow = lambda n: 0  # candidate/challenger always shown as A
-                try:
-                    cmd_judge(run)
-                    st = load(run, "state.json")
-                    assert st["best"] == "d2" and st["best_score"] == 6.0
-                    cand = base / "cand.html"
-                    cand.write_text(ref.replace("4:00", "four"))
-                    cmd_round(run, str(cand), "define")  # integrity fail, no critic call
-                    cand.write_text(ref)
-                    garbage = json.dumps({"type": "result", "result": "no score", "is_error": False})
-                    replies[:] = [garbage, "GAP: type\nSCORE: 7/10", "WINNER: A\nREASON: x"]
-                    cmd_round(run, str(cand), "define")
-                    cmd_decide(run)
-                    (run / "shots" / "v3-tells.json").write_text(json.dumps(
-                        [{"tell": "accent-emphasis", "where": "<em> in <h1>", "why": "color+italic"}]))
-                    cmd_round(run, str(cand), "deliver")  # tells -> loss, no critic call
-                    replies[:] = ["GAP: less\nSCORE: 9/10", "WINNER: B\nREASON: best still better"]
-                    cmd_round(run, str(cand), "deliver")
-                    (run / "variants" / "assets").mkdir()
-                    (run / "variants" / "assets" / "hero.png").write_bytes(b"png")
-                    cmd_finish(run)
-                    assert (base / "assets" / "hero.png").read_bytes() == b"png"
-                finally:
-                    secrets.randbelow = real
+                # d2 wins as A, then again as B (swap-consistent)
+                replies[:] = ["WINNER: A\nREASON: bolder", "WINNER: B\nREASON: bolder", rv(6, ["hero", "type"])]
+                cmd_judge(run)
                 st = load(run, "state.json")
-                assert st["rounds"] == 2 and st["stop_reason"] == "STOP_MAX" and st["best"] == "v2"
+                assert st["best"] == "d2" and st["best_score"] == 6.0
+                assert [(i["n"], i["status"]) for i in st["ledger"]] == [(1, "OPEN"), (2, "OPEN")]
+                assert "P1 [OPEN] hero" in (run / "ledger.md").read_text()
+                assert "Previous review" not in prompts[-1]  # first review has nothing to anchor to
+                cand = base / "cand.html"
+                cand.write_text(ref.replace("4:00", "four"))
+                cmd_round(run, str(cand), "define")  # integrity fail, no critic call
+                cand.write_text(ref)
+                garbage = json.dumps({"type": "result", "result": "no score", "is_error": False})
+                replies[:] = [garbage, rv(7, ["footer"], "P1: FIXED\nP2: OPEN\n"),
+                              "WINNER: A\nREASON: x", "WINNER: B\nREASON: x"]
+                cmd_round(run, str(cand), "define")
+                assert "P1 [OPEN] hero" in prompts[-3] and "COMPOSITION 6/10" in prompts[-3]
+                st = load(run, "state.json")
+                assert st["best"] == "v2" and st["best_criteria"]["TYPE"] == 7.0
+                assert [(i["n"], i["status"]) for i in st["ledger"]] == [(1, "FIXED"), (2, "OPEN"), (3, "OPEN")]
+                cmd_decide(run)
+                # split verdict: v3 wins as A, loses as B -> position noise, v2 keeps its place and its ledger
+                replies[:] = [rv(8, ["new"], "P2: FIXED\n"), "WINNER: A\nREASON: x", "WINNER: A\nREASON: v2"]
+                cmd_round(run, str(cand), "define")
+                st = load(run, "state.json")
+                assert st["best"] == "v2" and st["stale"] == 1 and len(st["ledger"]) == 3
+                cmd_decide(run)
+                assert load(run, "state.json")["stop_reason"] == "STOP_MAX"
+                cmd_ambition(run)
+                st = load(run, "state.json")
+                assert (st["ambition"], st["cap"], st["stale"], st["stop_reason"]) == (1, 6, 0, None)
+                try:
+                    cmd_ambition(run)
+                    raise AssertionError("ambition on a running loop")
+                except LoopError:
+                    pass
+                for _ in range(2):  # two straight losses -> plateau; a lost first call skips the second
+                    replies[:] = [rv(5), "WINNER: B\nREASON: v2 tighter"]
+                    cmd_round(run, str(cand), "define")
+                cmd_decide(run)
+                assert load(run, "state.json")["stop_reason"] == "STOP_PLATEAU"
+                (run / "shots" / "v6-tells.json").write_text(json.dumps(
+                    [{"tell": "accent-emphasis", "where": "<em> in <h1>", "why": "color+italic"}]))
+                cmd_round(run, str(cand), "deliver")  # tells -> loss, no critic call
+                replies[:] = [rv(9, ["less"]), "WINNER: B\nREASON: best still better"]
+                cmd_round(run, str(cand), "deliver")
+                (run / "variants" / "assets").mkdir()
+                (run / "variants" / "assets" / "hero.png").write_bytes(b"png")
+                cmd_finish(run)
+                assert (base / "assets" / "hero.png").read_bytes() == b"png"
+                assert replies == []
+                st = load(run, "state.json")
+                assert st["rounds"] == 5 and st["stop_reason"] == "STOP_PLATEAU" and st["best"] == "v2"
                 m = load(run, "manifest.json")
-                assert m["winner"] == "v2" and m["stop_reason"] == "STOP_MAX"
+                assert m["winner"] == "v2" and m["stop_reason"] == "STOP_PLATEAU"
                 assert [(i["id"], i["phase"], i["verdict"]) for i in m["iterations"]] == [
                     ("d1", "discover", "loss"), ("d2", "discover", "win"),
-                    ("v1", "define", "loss"), ("v2", "define", "win"),
-                    ("v3", "deliver", "loss"), ("v4", "deliver", "loss")]
-                assert m["iterations"][4]["note"].startswith("tells: accent-emphasis") and m["iterations"][4]["score"] is None
+                    ("v1", "define", "loss"), ("v2", "define", "win"), ("v3", "define", "loss"),
+                    ("v4", "define", "loss"), ("v5", "define", "loss"),
+                    ("v6", "deliver", "loss"), ("v7", "deliver", "loss")]
+                assert m["iterations"][7]["note"].startswith("tells: accent-emphasis") and m["iterations"][7]["score"] is None
                 assert m["iterations"][2]["note"].startswith("integrity:") and m["iterations"][2]["score"] is None
+                assert m["iterations"][4]["note"] == "lost to v2: v2"
                 assert set(m["iterations"][0]) == {"id", "phase", "html", "shots", "score", "verdict", "note", "ts"}
                 logs = [json.loads(x) for x in (run / "log.jsonl").read_text().splitlines()]
-                assert sum(1 for x in logs if x["kind"] == "critic") == 7
+                assert sum(1 for x in logs if x["kind"] == "critic") == 16
                 sent = [i for x in logs if x["kind"] == "critic" for i in x["images"]]
                 assert any(i.endswith("v2-desktop-fold.png") for i in sent)
                 assert any(x["kind"] == "integrity" and not x["ok"] for x in logs)
@@ -813,22 +920,22 @@ def selftest() -> None:
                 # unparseable twice -> error
                 replies[:] = [garbage, garbage]
                 try:
-                    critic(run, "x", "p", parse_score)
+                    critic(run, "x", "p", parse_review)
                     raise AssertionError("expected failure")
                 except LoopError:
                     pass
                 replies[:] = [json.dumps({"type": "result", "is_error": True,
                                           "result": "Failed to authenticate. API Error: 401"})]
                 try:
-                    critic(run, "x", "p", parse_score)
+                    critic(run, "x", "p", parse_review)
                     raise AssertionError("expected auth failure")
                 except LoopError as e:
                     assert "AUTH" in str(e)
                 # model override reaches CALL
                 seen = []
                 CALL = lambda model, prompt, cwd: (seen.append(model), fake_call(model, prompt, cwd))[1]
-                replies[:] = ["SCORE: 5/10"]
-                critic(run, "m", "p", parse_score, model="claude-opus-5-5")
+                replies[:] = [rv(5)]
+                critic(run, "m", "p", parse_review, model="claude-opus-5-5")
                 assert seen == ["claude-opus-5-5"]
                 # copy gate: more detector issues than baseline -> exit 1
                 real_detect = DETECT
@@ -908,6 +1015,7 @@ def main() -> int:
     r.add_argument("html")
     r.add_argument("--phase", choices=("define", "deliver"), default="define")
     sub.add_parser("decide")
+    sub.add_parser("ambition", help="after STOP_PLATEAU/STOP_MAX: 3 more rounds at a higher ambition level")
     sub.add_parser("finish")
     sub.add_parser("status")
     i = sub.add_parser("integrity")
@@ -936,6 +1044,8 @@ def main() -> int:
             cmd_round(run, a.html, a.phase)
         elif a.cmd == "decide":
             cmd_decide(run)
+        elif a.cmd == "ambition":
+            cmd_ambition(run)
         elif a.cmd == "finish":
             cmd_finish(run)
         elif a.cmd == "status":
